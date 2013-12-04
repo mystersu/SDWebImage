@@ -13,6 +13,13 @@
 #import <mach/mach.h>
 #import <mach/mach_host.h>
 
+#if TARGET_OS_IPHONE
+
+#import <ImageIO/ImageIO.h>
+#import <AssetsLibrary/AssetsLibrary.h>
+
+#endif
+
 static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
 
 @interface SDImageCache ()
@@ -27,6 +34,9 @@ static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
 
 @implementation SDImageCache {
     NSFileManager *_fileManager;
+    
+    ALAssetsLibrary *_localAssetsLibrary;
+    NSMutableDictionary *_localAssetURLToAssetCache;
 }
 
 + (SDImageCache *)sharedImageCache
@@ -83,7 +93,63 @@ static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
                                                  selector:@selector(backgroundCleanDisk)
                                                      name:UIApplicationDidEnterBackgroundNotification
                                                    object:nil];
+        
+        
+        // Setup local asset management
+        _localAssetsLibrary = [[ALAssetsLibrary alloc] init];
+        
+        // We cache references to the ALAssets so we can get to them very quickly :)
+        _localAssetURLToAssetCache = [NSMutableDictionary dictionary];
+        
+        ALAuthorizationStatus accessGranted = [ALAssetsLibrary authorizationStatus];
+        
+        // Only index the local Asset library if we have access to it (permission should be requested outside of SDWebImage)
+        if (accessGranted)
+        {
+            // NOTE: This currently only indexes the Camera Roll, not additional albums or other image stores on the device
+            [_localAssetsLibrary enumerateGroupsWithTypes:ALAssetsGroupSavedPhotos
+                                               usingBlock:^(ALAssetsGroup *group, BOOL *stop)
+             {
+                 @autoreleasepool
+                 {
+                     [group setAssetsFilter:[ALAssetsFilter allPhotos]];
+                     
+                     if (group != nil)
+                     {
+                         
+                         [group enumerateAssetsWithOptions:NSEnumerationConcurrent
+                                                usingBlock:^(ALAsset *result, NSUInteger index, BOOL *shouldStop)
+                          {
+                              @autoreleasepool
+                              {
+                                  if (result != NULL)
+                                  {
+                                      if ([[result valueForProperty:ALAssetPropertyType] isEqualToString:ALAssetTypePhoto])
+                                      {
+                                          @synchronized(_localAssetURLToAssetCache)
+                                          {
+                                              // Create a mapping of the ALAssets so we can retrieve them quickly without polling the ALAssetsLibrary each time
+                                              NSString *assetURL = ((NSURL *)[result valueForProperty:ALAssetPropertyAssetURL]).absoluteString;
+                                              [_localAssetURLToAssetCache setValue:result forKey:assetURL];
+                                          }
+                                      }
+                                  }
+                                  else
+                                  {
+                                      // NSLog(@"Finished indexing of local assets");
+                                  }
+                              }
+                          }];
+                     }
+                 }
+             }
+                                             failureBlock:^(NSError *error)
+             {
+                 
+             }];
+        }
 #endif
+        
     }
 
     return self;
@@ -267,6 +333,123 @@ static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
 - (UIImage *)scaledImageForKey:(NSString *)key image:(UIImage *)image
 {
     return SDScaledImageForKey(key, image);
+}
+
+- (NSOperation *)localAssetWithURL:(NSURL *)url withLocalAssetSize:(SDLocalAssetSize)size done:(void (^)(UIImage *image, SDImageCacheType cacheType))doneBlock
+{
+    if (!doneBlock) return nil;
+    
+    if (!url)
+    {
+        doneBlock(nil, SDImageCacheTypeNone);
+        return nil;
+    }
+    
+    UIImage *image = [self imageFromMemoryCacheForKey:[NSString stringWithFormat:@"%@:%d", url.absoluteString, size]];
+    if (image)
+    {
+        doneBlock(image, SDImageCacheTypeMemory);
+        return nil;
+    }
+    
+    NSOperation *operation = NSOperation.new;
+    
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^
+    {
+        if (operation.isCancelled)
+        {
+            return;
+        }
+        
+        UIImage *returnImage;
+        
+        __block ALAsset *localAsset;
+        localAsset = [_localAssetURLToAssetCache valueForKey:url.absoluteString];
+        
+        if (!localAsset)
+        {
+            // Force the retrieval of the ALAsset to get retrieved from the ALAssetsLibrary synchronously using a semaphore
+            dispatch_semaphore_t sema = dispatch_semaphore_create(0);
+            dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^
+                           {
+                               [_localAssetsLibrary assetForURL:url resultBlock:^(ALAsset *asset)
+                                {
+                                    @autoreleasepool
+                                    {
+                                        if (asset)
+                                        {
+                                            localAsset = asset;
+                                            
+                                            @synchronized(_localAssetURLToAssetCache)
+                                            {
+                                                // this Asset wasn't previous in our cache, add it for use later
+                                                NSString *assetURL = ((NSURL *)[asset valueForProperty:ALAssetPropertyAssetURL]).absoluteString;
+                                                [_localAssetURLToAssetCache setValue:asset forKey:assetURL];
+                                            }
+                                        }
+                                    }
+                                    dispatch_semaphore_signal(sema);
+                                }
+                                                   failureBlock:^(NSError *error)
+                                {
+                                    dispatch_semaphore_signal(sema);
+                                }];
+                           });
+            
+            dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
+        }
+        
+        if (localAsset)
+        {
+            if (operation.isCancelled)
+            {
+                return;
+            }
+            
+            switch (size)
+            {
+                case SDLocalAssetSizeOriginal:
+                    returnImage = [UIImage imageWithCGImage:localAsset.defaultRepresentation.fullResolutionImage];
+                    break;
+                    
+                case SDLocalAssetSizeFullscreenAspect:
+                    returnImage = [UIImage imageWithCGImage:localAsset.defaultRepresentation.fullScreenImage];
+                    break;
+                    
+                case SDLocalAssetSizeThumnailSquare:
+                    returnImage = [UIImage imageWithCGImage:localAsset.thumbnail];
+                    break;
+                    
+                default:
+                    returnImage = [UIImage imageWithCGImage:localAsset.aspectRatioThumbnail];
+                    break;
+            }
+            
+            if (returnImage)
+            {
+                CGFloat cost = returnImage.size.height * returnImage.size.width * returnImage.scale;
+                [self.memCache setObject:returnImage forKey:[NSString stringWithFormat:@"%@:%d", url.absoluteString, size] cost:cost];
+            }
+            
+            if (operation.isCancelled)
+            {
+                return;
+            }
+            
+            dispatch_main_sync_safe(^
+            {
+                doneBlock(returnImage, SDImageCacheTypeLocalAssetStore);
+            });
+            
+        } else {
+            dispatch_main_sync_safe(^
+            {
+                doneBlock(nil, SDImageCacheTypeNone);
+            });
+        }
+    });
+    
+    return operation;
 }
 
 - (NSOperation *)queryDiskCacheForKey:(NSString *)key done:(void (^)(UIImage *image, SDImageCacheType cacheType))doneBlock

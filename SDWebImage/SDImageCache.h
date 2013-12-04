@@ -22,9 +22,40 @@ enum SDImageCacheType
     /**
      * The image was obtained from the memory cache.
      */
-    SDImageCacheTypeMemory
+    SDImageCacheTypeMemory,
+    /**
+     * The image was obtained from the ALAssetsLibrary.
+     */
+    SDImageCacheTypeLocalAssetStore
 };
 typedef enum SDImageCacheType SDImageCacheType;
+
+enum SDLocalAssetSize
+{
+    /**
+     * This size represents a thumbnail of the underlying ALAsset (with correct aspect ratio)
+     */
+    SDLocalAssetSizeThumnailAspect,
+    
+    /**
+     * This size represents a thumbnail of the underlying ALAsset (cropped square).
+     * This image will be of higher resolution than the `SDLocalAssetSizeThumnailAspect` type but
+     * will be cropeed to a square
+     */
+    SDLocalAssetSizeThumnailSquare,
+    
+    /**
+     * This size represents an appropriately sized image for fullscreen viewing on the current device
+     */
+    SDLocalAssetSizeFullscreenAspect,
+    
+    /**
+     * This size represents the original image in the user's camera roll
+     */
+    SDLocalAssetSizeOriginal
+};
+typedef enum SDLocalAssetSize SDLocalAssetSize;
+
 
 /**
  * SDImageCache maintains a memory cache and an optional disk cache. Disk cache write operations are performed
@@ -97,6 +128,13 @@ typedef enum SDImageCacheType SDImageCacheType;
  * @param toDisk Store the image to disk cache if YES
  */
 - (void)storeImage:(UIImage *)image imageData:(NSData *)data forKey:(NSString *)key toDisk:(BOOL)toDisk;
+
+/**
+ * Query the local asset store (ALAssetsLibrary) for the specified URL (assets-library scheme)
+ *
+ & @param url The ALAsset URL (must be assets-library:// scheme)
+ */
+- (NSOperation *)localAssetWithURL:(NSURL *)url withLocalAssetSize:(SDLocalAssetSize)size done:(void (^)(UIImage *image, SDImageCacheType cacheType))doneBlockj;
 
 /**
  * Query the disk cache asynchronously.

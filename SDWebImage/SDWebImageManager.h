@@ -51,7 +51,19 @@ typedef enum
      * Handles cookies stored in NSHTTPCookieStore by setting
      * NSMutableURLRequest.HTTPShouldHandleCookies = YES;
      */
-    SDWebImageHandleCookies = 1 << 6
+    SDWebImageHandleCookies = 1 << 6,
+    
+    /**
+     * These options are used when a URL that is requested is retrieved from the local `ALAssetsLibrary`.
+     * `ALAsset` and `ALAssetRepresentation` provide various sizes of images for each ALAsset URL
+     * The sizes of these images vary per device and screen resolution.
+     * The first match (in ascending order) is selected if multiple options are provided.
+     * By default, the thumbnail with a correct aspect ratio is returned (the smallest of the assets provided)
+     */
+    SDWebImageLocalAssetSizeThumnailAspect = 1 << 7,
+    SDWebImageLocalAssetSizeThumnailSquare = 1 << 8,
+    SDWebImageLocalAssetSizeFullscreenAspect = 1 << 9,
+    SDWebImageLocalAssetSizeOriginal = 1 << 10
 } SDWebImageOptions;
 
 typedef void(^SDWebImageCompletedBlock)(UIImage *image, NSError *error, SDImageCacheType cacheType);
@@ -186,5 +198,10 @@ SDWebImageManager *manager = [SDWebImageManager sharedManager];
  * Check if image has already been cached
  */
 - (BOOL)diskImageExistsForURL:(NSURL *)url;
+
+/**
+ * Get the key for which the image is cached with
+ */
+- (NSString *)cacheKeyForURL:(NSURL *)url;
 
 @end

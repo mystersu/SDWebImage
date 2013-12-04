@@ -113,6 +113,41 @@
     {
         [self.runningOperations addObject:operation];
     }
+    
+    if ([SDWebImageManager urlIsLocalAsset:url])
+    {
+        // If the requested URI is a local (assets-library) URI, fetch it from there
+        
+        SDLocalAssetSize assetSize;
+        
+        if (options & SDWebImageLocalAssetSizeThumnailSquare)
+        {
+            assetSize = SDLocalAssetSizeThumnailSquare;
+        }
+        else if (options & SDWebImageLocalAssetSizeFullscreenAspect)
+        {
+            assetSize = SDLocalAssetSizeFullscreenAspect;
+        }
+        else if (options & SDWebImageLocalAssetSizeOriginal)
+        {
+            assetSize = SDLocalAssetSizeOriginal;
+        }
+        else
+        {
+            assetSize = SDLocalAssetSizeThumnailAspect;
+        }
+        
+        operation.cacheOperation = [self.imageCache localAssetWithURL:url withLocalAssetSize:assetSize done:^(UIImage *image, SDImageCacheType cacheType)
+        {
+            dispatch_main_sync_safe(^
+            {
+                completedBlock(image, nil, cacheType, YES);
+            });
+        }];
+        
+        return operation;
+    }
+    
     NSString *key = [self cacheKeyForURL:url];
 
     operation.cacheOperation = [self.imageCache queryDiskCacheForKey:key done:^(UIImage *image, SDImageCacheType cacheType)
@@ -268,6 +303,15 @@
 - (BOOL)isRunning
 {
     return self.runningOperations.count > 0;
+}
+
++ (BOOL)urlIsLocalAsset:(NSURL *)url
+{
+    if ([url isKindOfClass:[NSString class]]) {
+        return [((NSString *)url) rangeOfString:@"assets-library"].location != NSNotFound;
+    }
+    
+    return ![url isEqual:[NSNull null]] && [url.scheme rangeOfString:@"assets-library"].location != NSNotFound;
 }
 
 @end
