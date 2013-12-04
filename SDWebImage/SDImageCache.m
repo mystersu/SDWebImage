@@ -364,7 +364,11 @@ static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
         UIImage *returnImage;
         
         __block ALAsset *localAsset;
-        localAsset = [_localAssetURLToAssetCache valueForKey:url.absoluteString];
+        
+        @synchronized(_localAssetURLToAssetCache)
+        {
+            localAsset = [_localAssetURLToAssetCache valueForKey:url.absoluteString];
+        }
         
         if (!localAsset)
         {
