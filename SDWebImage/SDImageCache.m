@@ -354,7 +354,7 @@ static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
     
     NSOperation *operation = NSOperation.new;
     
-    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^
+    dispatch_async(self.ioQueue, ^
     {
         if (operation.isCancelled)
         {
