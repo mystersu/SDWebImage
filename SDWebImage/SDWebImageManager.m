@@ -139,6 +139,16 @@
         
         operation.cacheOperation = [self.imageCache localAssetWithURL:url withLocalAssetSize:assetSize done:^(UIImage *image, SDImageCacheType cacheType)
         {
+            if (operation.isCancelled)
+            {
+                @synchronized(self.runningOperations)
+                {
+                    [self.runningOperations removeObject:operation];
+                }
+                
+                return;
+            }
+            
             dispatch_main_sync_safe(^
             {
                 completedBlock(image, nil, cacheType, YES);
