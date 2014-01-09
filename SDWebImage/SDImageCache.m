@@ -83,7 +83,7 @@ static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
                                                  selector:@selector(clearMemory)
                                                      name:UIApplicationDidReceiveMemoryWarningNotification
                                                    object:nil];
-
+        
         [[NSNotificationCenter defaultCenter] addObserver:self
                                                  selector:@selector(cleanDisk)
                                                      name:UIApplicationWillTerminateNotification
@@ -93,7 +93,6 @@ static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
                                                  selector:@selector(backgroundCleanDisk)
                                                      name:UIApplicationDidEnterBackgroundNotification
                                                    object:nil];
-        
         
         // Setup local asset management
         _localAssetsLibrary = [[ALAssetsLibrary alloc] init];
@@ -106,47 +105,52 @@ static const NSInteger kDefaultCacheMaxCacheAge = 60 * 60 * 24 * 7; // 1 week
         // Only index the local Asset library if we have access to it (permission should be requested outside of SDWebImage)
         if (accessGranted)
         {
-            // NOTE: This currently only indexes the Camera Roll, not additional albums or other image stores on the device
-            [_localAssetsLibrary enumerateGroupsWithTypes:ALAssetsGroupSavedPhotos
-                                               usingBlock:^(ALAssetsGroup *group, BOOL *stop)
-             {
-                 @autoreleasepool
-                 {
-                     [group setAssetsFilter:[ALAssetsFilter allPhotos]];
-                     
-                     if (group != nil)
-                     {
-                         
-                         [group enumerateAssetsWithOptions:NSEnumerationConcurrent
-                                                usingBlock:^(ALAsset *result, NSUInteger index, BOOL *shouldStop)
-                          {
-                              @autoreleasepool
-                              {
-                                  if (result != NULL)
-                                  {
-                                      if ([[result valueForProperty:ALAssetPropertyType] isEqualToString:ALAssetTypePhoto])
-                                      {
-                                          @synchronized(_localAssetURLToAssetCache)
-                                          {
-                                              // Create a mapping of the ALAssets so we can retrieve them quickly without polling the ALAssetsLibrary each time
-                                              NSString *assetURL = ((NSURL *)[result valueForProperty:ALAssetPropertyAssetURL]).absoluteString;
-                                              [_localAssetURLToAssetCache setValue:result forKey:assetURL];
-                                          }
-                                      }
-                                  }
-                                  else
-                                  {
-                                      // NSLog(@"Finished indexing of local assets");
-                                  }
-                              }
-                          }];
-                     }
-                 }
-             }
-                                             failureBlock:^(NSError *error)
-             {
-                 
-             }];
+            dispatch_async(self.ioQueue, ^
+            {
+               
+               // NOTE: This currently only indexes the Camera Roll, not additional albums or other image stores on the device
+               [_localAssetsLibrary enumerateGroupsWithTypes:ALAssetsGroupSavedPhotos
+                                                  usingBlock:^(ALAssetsGroup *group, BOOL *stop)
+                {
+                    @autoreleasepool
+                    {
+                        [group setAssetsFilter:[ALAssetsFilter allPhotos]];
+                        
+                        if (group != nil)
+                        {
+                            
+                            [group enumerateAssetsWithOptions:NSEnumerationConcurrent
+                                                   usingBlock:^(ALAsset *result, NSUInteger index, BOOL *shouldStop)
+                             {
+                                 @autoreleasepool
+                                 {
+                                     if (result != NULL)
+                                     {
+                                         if ([[result valueForProperty:ALAssetPropertyType] isEqualToString:ALAssetTypePhoto])
+                                         {
+                                             @synchronized(_localAssetURLToAssetCache)
+                                             {
+                                                 // Create a mapping of the ALAssets so we can retrieve them quickly without polling the ALAssetsLibrary each time
+                                                 NSString *assetURL = ((NSURL *)[result valueForProperty:ALAssetPropertyAssetURL]).absoluteString;
+                                                 [_localAssetURLToAssetCache setValue:result forKey:assetURL];
+                                             }
+                                         }
+                                     }
+                                     else
+                                     {
+                                         // NSLog(@"Finished indexing of local assets");
+                                     }
+                                 }
+                             }];
+                        }
+                    }
+                }
+                                                failureBlock:^(NSError *error)
+                {
+                    
+                }];
+               
+           });
         }
 #endif
         
