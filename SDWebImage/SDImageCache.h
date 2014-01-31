@@ -9,29 +9,26 @@
 #import <Foundation/Foundation.h>
 #import "SDWebImageCompat.h"
 
-enum SDImageCacheType
-{
+typedef NS_ENUM(NSInteger, SDImageCacheType) {
     /**
      * The image wasn't available the SDWebImage caches, but was downloaded from the web.
      */
-    SDImageCacheTypeNone = 0,
+            SDImageCacheTypeNone,
     /**
      * The image was obtained from the disk cache.
      */
-    SDImageCacheTypeDisk,
+            SDImageCacheTypeDisk,
     /**
      * The image was obtained from the memory cache.
      */
-    SDImageCacheTypeMemory,
+    		SDImageCacheTypeMemory,
     /**
      * The image was obtained from the ALAssetsLibrary.
      */
-    SDImageCacheTypeLocalAssetStore
+    		SDImageCacheTypeLocalAssetStore
 };
-typedef enum SDImageCacheType SDImageCacheType;
 
-enum SDLocalAssetSize
-{
+typedef NS_ENUM(NSInteger, SDLocalAssetSize) {
     /**
      * This size represents a thumbnail of the underlying ALAsset (with correct aspect ratio)
      */
@@ -54,7 +51,6 @@ enum SDLocalAssetSize
      */
     SDLocalAssetSizeOriginal
 };
-typedef enum SDLocalAssetSize SDLocalAssetSize;
 
 
 /**
@@ -76,7 +72,7 @@ typedef enum SDLocalAssetSize SDLocalAssetSize;
 /**
  * The maximum size of the cache, in bytes.
  */
-@property (assign, nonatomic) unsigned long long maxCacheSize;
+@property (assign, nonatomic) NSUInteger maxCacheSize;
 
 /**
  * Returns global shared cache instance
@@ -121,13 +117,14 @@ typedef enum SDLocalAssetSize SDLocalAssetSize;
  * Store an image into memory and optionally disk cache at the given key.
  *
  * @param image The image to store
- * @param data The image data as returned by the server, this representation will be used for disk storage
+ * @param recalculate BOOL indicates if imageData can be used or a new data should be constructed from the UIImage
+ * @param imageData The image data as returned by the server, this representation will be used for disk storage
  *             instead of converting the given image object into a storable/compressed image format in order
  *             to save quality and CPU
  * @param key The unique image cache key, usually it's image absolute URL
  * @param toDisk Store the image to disk cache if YES
  */
-- (void)storeImage:(UIImage *)image imageData:(NSData *)data forKey:(NSString *)key toDisk:(BOOL)toDisk;
+- (void)storeImage:(UIImage *)image recalculateFromImage:(BOOL)recalculate imageData:(NSData *)imageData forKey:(NSString *)key toDisk:(BOOL)toDisk;
 
 /**
  * Query the local asset store (ALAssetsLibrary) for the specified URL (assets-library scheme)
@@ -190,7 +187,7 @@ typedef enum SDLocalAssetSize SDLocalAssetSize;
 /**
  * Get the size used by the disk cache
  */
-- (unsigned long long)getSize;
+- (NSUInteger)getSize;
 
 /**
  * Get the number of images in the disk cache
@@ -200,7 +197,7 @@ typedef enum SDLocalAssetSize SDLocalAssetSize;
 /**
  * Asynchronously calculate the disk cache's size.
  */
-- (void)calculateSizeWithCompletionBlock:(void (^)(NSUInteger fileCount, unsigned long long totalSize))completionBlock;
+- (void)calculateSizeWithCompletionBlock:(void (^)(NSUInteger fileCount, NSUInteger totalSize))completionBlock;
 
 /**
  * Check if image exists in cache already
