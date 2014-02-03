@@ -347,7 +347,7 @@ BOOL ImageDataHasPNGPreffix(NSData *data) {
         return nil;
     }
     
-    UIImage *image = [self imageFromMemoryCacheForKey:[NSString stringWithFormat:@"%@:%d", url.absoluteString, size]];
+    UIImage *image = [self imageFromMemoryCacheForKey:[NSString stringWithFormat:@"%@:%d", url.absoluteString, (int)size]];
     if (image)
     {
         doneBlock(image, SDImageCacheTypeMemory);
@@ -434,7 +434,7 @@ BOOL ImageDataHasPNGPreffix(NSData *data) {
             if (returnImage)
             {
                 CGFloat cost = returnImage.size.height * returnImage.size.width * returnImage.scale;
-                [self.memCache setObject:returnImage forKey:[NSString stringWithFormat:@"%@:%d", url.absoluteString, size] cost:cost];
+                [self.memCache setObject:returnImage forKey:[NSString stringWithFormat:@"%@:%d", url.absoluteString, (int)size] cost:cost];
             }
             
             if (operation.isCancelled)

@@ -55,7 +55,7 @@ typedef NS_OPTIONS(NSUInteger, SDWebImageOptions) {
      * Enable to allow untrusted SSL ceriticates.
      * Useful for testing purposes. Use with caution in production.
      */
-            SDWebImageAllowInvalidSSLCertificates = 1 << 7
+            SDWebImageAllowInvalidSSLCertificates = 1 << 7,
     /**
      * These options are used when a URL that is requested is retrieved from the local `ALAssetsLibrary`.
      * `ALAsset` and `ALAssetRepresentation` provide various sizes of images for each ALAsset URL
