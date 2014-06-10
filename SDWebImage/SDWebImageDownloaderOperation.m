@@ -11,7 +11,10 @@
 #import "UIImage+MultiFormat.h"
 #import <ImageIO/ImageIO.h>
 
-@interface SDWebImageDownloaderOperation ()
+@interface SDWebImageDownloaderOperation () {
+    BOOL _executing;
+    BOOL _finished;
+}
 
 @property (copy, nonatomic) SDWebImageDownloaderProgressBlock progressBlock;
 @property (copy, nonatomic) SDWebImageDownloaderCompletedBlock completedBlock;
@@ -32,8 +35,12 @@
 
 @implementation SDWebImageDownloaderOperation {
     size_t width, height;
+    UIImageOrientation orientation;
     BOOL responseFromCached;
 }
+
+@synthesize executing = _executing;
+@synthesize finished = _finished;
 
 - (id)initWithRequest:(NSURLRequest *)request options:(SDWebImageDownloaderOptions)options progress:(void (^)(NSInteger, NSInteger))progressBlock completed:(void (^)(UIImage *, NSData *, NSError *, BOOL))completedBlock cancelled:(void (^)())cancelBlock {
     if ((self = [super init])) {
@@ -107,6 +114,13 @@
             self.completedBlock(nil, nil, [NSError errorWithDomain:NSURLErrorDomain code:0 userInfo:@{NSLocalizedDescriptionKey : @"Connection can't be initialized"}], YES);
         }
     }
+
+#if TARGET_OS_IPHONE && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_4_0
+    if (self.backgroundTaskId != UIBackgroundTaskInvalid) {
+        [[UIApplication sharedApplication] endBackgroundTask:self.backgroundTaskId];
+        self.backgroundTaskId = UIBackgroundTaskInvalid;
+    }
+#endif
 }
 
 - (void)cancel {
@@ -121,6 +135,7 @@
 }
 
 - (void)cancelInternalAndStop {
+    if (self.isFinished) return;
     [self cancelInternal];
     CFRunLoopStop(CFRunLoopGetCurrent());
 }
@@ -164,10 +179,20 @@
     [self didChangeValueForKey:@"isFinished"];
 }
 
+- (BOOL)isFinished
+{
+    return _finished;
+}
+
 - (void)setExecuting:(BOOL)executing {
     [self willChangeValueForKey:@"isExecuting"];
     _executing = executing;
     [self didChangeValueForKey:@"isExecuting"];
+}
+
+- (BOOL)isExecuting
+{
+    return _executing;
 }
 
 - (BOOL)isConcurrent {
@@ -194,7 +219,7 @@
         if (self.completedBlock) {
             self.completedBlock(nil, nil, [NSError errorWithDomain:NSURLErrorDomain code:[((NSHTTPURLResponse *)response) statusCode] userInfo:nil], YES);
         }
-
+        CFRunLoopStop(CFRunLoopGetCurrent());
         [self done];
     }
 }
@@ -216,12 +241,22 @@
         if (width + height == 0) {
             CFDictionaryRef properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, NULL);
             if (properties) {
+                NSInteger orientationValue = -1;
                 CFTypeRef val = CFDictionaryGetValue(properties, kCGImagePropertyPixelHeight);
                 if (val) CFNumberGetValue(val, kCFNumberLongType, &height);
                 val = CFDictionaryGetValue(properties, kCGImagePropertyPixelWidth);
                 if (val) CFNumberGetValue(val, kCFNumberLongType, &width);
+                val = CFDictionaryGetValue(properties, kCGImagePropertyOrientation);
+                if (val) CFNumberGetValue(val, kCFNumberNSIntegerType, &orientationValue);
                 CFRelease(properties);
+
+                // When we draw to Core Graphics, we lose orientation information,
+                // which means the image below born of initWithCGIImage will be
+                // oriented incorrectly sometimes. (Unlike the image born of initWithData
+                // in connectionDidFinishLoading.) So save it here and pass it on later.
+                orientation = [[self class] orientationFromPropertyValue:(orientationValue == -1 ? 1 : orientationValue)];
             }
+
         }
 
         if (width + height > 0 && totalSize < self.expectedSize) {
@@ -249,7 +284,7 @@
 #endif
 
             if (partialImageRef) {
-                UIImage *image = [UIImage imageWithCGImage:partialImageRef];
+                UIImage *image = [UIImage imageWithCGImage:partialImageRef scale:1 orientation:orientation];
                 UIImage *scaledImage = [self scaledImageForKey:self.request.URL.absoluteString image:image];
                 image = [UIImage decodedImageWithImage:scaledImage];
                 CGImageRelease(partialImageRef);
@@ -269,6 +304,29 @@
     }
 }
 
++ (UIImageOrientation)orientationFromPropertyValue:(NSInteger)value {
+    switch (value) {
+        case 1:
+            return UIImageOrientationUp;
+        case 3:
+            return UIImageOrientationDown;
+        case 8:
+            return UIImageOrientationLeft;
+        case 6:
+            return UIImageOrientationRight;
+        case 2:
+            return UIImageOrientationUpMirrored;
+        case 4:
+            return UIImageOrientationDownMirrored;
+        case 5:
+            return UIImageOrientationLeftMirrored;
+        case 7:
+            return UIImageOrientationRightMirrored;
+        default:
+            return UIImageOrientationUp;
+    }
+}
+
 - (UIImage *)scaledImageForKey:(NSString *)key image:(UIImage *)image {
     return SDScaledImageForKey(key, image);
 }
@@ -280,7 +338,11 @@
     [[NSNotificationCenter defaultCenter] postNotificationName:SDWebImageDownloadStopNotification object:nil];
 
     SDWebImageDownloaderCompletedBlock completionBlock = self.completedBlock;
-
+    
+    if (![[NSURLCache sharedURLCache] cachedResponseForRequest:_request]) {
+        responseFromCached = NO;
+    }
+    
     if (completionBlock) {
         if (self.options & SDWebImageDownloaderIgnoreCachedResponse && responseFromCached) {
             completionBlock(nil, nil, nil, YES);
